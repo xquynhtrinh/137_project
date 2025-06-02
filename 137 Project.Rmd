@@ -1,0 +1,102 @@
+---
+title: "137 Project"
+author: "Quynh Trinh,"
+date: "2025-05-30"
+output: html_document
+---
+
+```{r}
+# Load required libraries
+library(tidyverse)      # For data manipulation and visualization
+library(forecast)       # For Box-Cox transformation and time series analysis
+library(tseries)        # For additional time series functions
+library(ggplot2)        # For plotting
+```
+```{r}
+summary(finalPro_data)
+```
+- Since the project only focus on one country, Central African Republic, we will drop it. We also drop the Code variable since it only has CAF.
+
+- We will focus on: Year, GDP, and Imports
+
+```{r}
+# Focus on relevant columns: Year, GDP, Imports
+model <- finalPro_data |> select(Year, GDP, Imports)
+```
+```{r}
+# Plot data
+model_long <- model |>
+  pivot_longer(cols = c(GDP, Imports), names_to = "Variable", values_to = "Value")
+
+ggplot(model_long, aes(x = Year, y = Value)) +
+  geom_line() +
+  facet_wrap(~Variable, scales = "free_y") +
+  theme_minimal() +
+  labs(title = "Central African Republic: GDP and Imports Time Series")
+```
+- We notice that the time series for both are not constant
+
+```{r}
+# Statistics summary
+model |>
+  summarise(across(c(GDP, Imports), list(mean = mean, sd = sd, min = min, max = max, median = median), na.rm = TRUE))
+
+```
+
+```{r}
+library(zoo)
+roll_sd_gdp <- rollapply(model$GDP, width = 5, FUN = sd, fill = NA, align = 'right')
+roll_sd_imports <- rollapply(model$Imports, width = 5, FUN = sd, fill = NA, align = 'right')
+
+plot(model$Year, roll_sd_gdp, type = 'l', main = "Rolling SD (GDP)", xlab = "Year", ylab = "Rolling SD (5 years)")
+plot(model$Year, roll_sd_imports, type = 'l', main = "Rolling SD (Imports)", xlab = "Year", ylab = "Rolling SD (5 years)")
+```
+```{r}
+# Box-Cox transformation: Find lambda for GDP and Imports
+gdp_ts <- ts(model$GDP, start = min(model$Year), frequency = 1)
+imports_ts <- ts(model$Imports, start = min(model$Year), frequency = 1)
+
+lambda_gdp <- BoxCox.lambda(gdp_ts, method = "loglik")
+lambda_imports <- BoxCox.lambda(imports_ts, method = "loglik")
+
+cat("Box-Cox lambda for GDP:", lambda_gdp, "\n")
+cat("Box-Cox lambda for Imports:", lambda_imports, "\n")
+
+# Apply Box-Cox
+gdp_bc <- BoxCox(gdp_ts, lambda = lambda_gdp)
+imports_bc <- BoxCox(imports_ts, lambda = lambda_imports)
+```
+
+- Since lambda for both are ~0.5, we will apply Box-Cox transformation
+
+
+```{r}
+# Plot transformed series
+par(mfrow = c(2,1))
+plot(model$Year, gdp_bc, type = 'l', main = "Box-Cox Transformed GDP", xlab = "Year", ylab = "Transformed GDP")
+plot(model$Year, imports_bc, type = 'l', main = "Box-Cox Transformed Imports", xlab = "Year", ylab = "Transformed Imports")
+par(mfrow = c(1,1))
+```
+
+```{r}
+# Check normality
+hist(gdp_bc, main = "Histogram of Transformed GDP", xlab = "Transformed GDP")
+qqnorm(gdp_bc); qqline(gdp_bc)
+shapiro.test(gdp_bc)
+
+hist(imports_bc, main = "Histogram of Transformed Imports", xlab = "Transformed Imports")
+qqnorm(imports_bc); qqline(imports_bc)
+shapiro.test(imports_bc)
+```
+
+```{r}
+acf(gdp_bc)
+
+pacf(gdp_bc)
+ts.plot(diff(log(gdp_bc)))
+ts.plot(diff(diff(log(gdp_bc))))
+ts.plot(log(gdp_bc))
+ts.plot(gdp_bc)
+```
+
+
